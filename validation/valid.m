@@ -1,3 +1,12 @@
+%====================================================================================================
+% This is simple script that validates the RLC bridge corrections XLS spreadsheet file.
+% It generates simulated reference standards, simulated calibration measurements of RLC and 
+% then simulates measurements with errors of RLC meter. If XLS works right, the XLS sheet should
+% shown no deviation from simulated data.
+%
+% (c) 2021 Stanislav Maslan, s.maslan@seznam.cz.
+% The script is distributed under MIT license, https://opensource.org/licenses/MIT. 
+%====================================================================================================
 clear all;
 clc;
 
@@ -9,21 +18,25 @@ pkg load io;
 mfld = fileparts(mfilename('fullpath'));
 cd(mfld);
 
-
-xls_path = fullfile(mfld,'RLC_fix.xlsx');
-xls_copy = fullfile(mfld,'RLC_fix_proc.xlsx');
+% correction XLS to validate
+xls_path = fullfile(mfld,'./spreadsheets/RLC_fix.xlsx');
+% sheet name with reference impedances
 sheet_refz = 'Ref Z';
+% sheet name with list of used reference impedances
 sheet_refz_list = 'Ref Z list';
-sheet_rng_list = 'Ranges';
+% sheet name with calibration data
 sheet_cal = 'Cal Data';
+% sheet name to which it will simulate measurements
 sheet_meas = 'Measurement';
-
 
 % open source XLS (using COM interface otherwise with OCT it will screw up rest of the sheets!)
 xls = xlsopen(xls_path,true,'COM',false);
 
-try % use try-catch to prevent unclosed COM ref
+try % usin try-catch to prevent unclosed XLS COM ref
 
+    % -- generate reference Z data:
+    % note: XLS must contain tables with all frequencies and ranges and nominal Z values. This code will only fill in the sheet.
+    
     % get refz sheet dataz
     frz = xls_get_col(xls,sheet_refz,'f');
     Zrn = xls_get_col(xls,sheet_refz,'Nom Z');
@@ -52,9 +65,12 @@ try % use try-catch to prevent unclosed COM ref
     xls = xls_set_col(xls,sheet_refz,'Xs',Xsr./Zrsi);
     xls = xls_set_col(xls,sheet_refz,'U(Rs)',u_Rsr./Zrsi);
     xls = xls_set_col(xls,sheet_refz,'U(Xs)',u_Xsr./Zrsi);
-                      
-    
-    
+
+
+
+    % -- generate calibration data:
+    % note: XLS must contain tables with all frequencies and ranges and nominal Z values. This code will only fill in the sheet.                          
+   
     % get calibration sheet dataz
     rngc = xls_get_col(xls,sheet_cal,'Range Z',4);
     fcz  = xls_get_col(xls,sheet_cal,'f',4);
@@ -92,7 +108,9 @@ try % use try-catch to prevent unclosed COM ref
     xls = xls_set_col(xls,sheet_cal,'ua(Xs)',ua_Xsc./Zcsi,4);
     
     
-    % -- generate measurement data
+    
+    % -- generate measurement data:
+    % note: XLS must contain some rows to fill in. It will simulate as much measurements as valid rows find
     
     % unique calibrated ranges
     rngs = unique(rngc);
@@ -187,66 +205,5 @@ end_try_catch
 
 % always close so there are no zombies of Excel instances!
 xlsclose(xls);
-
-
-return
-
-mcc = 10000;
-
-[xls.num,xls.txt] = xlsread(data_path,data_sheet);
-f = csv_get_col(xls,'f',data_row);
-w = 2*pi*f;
-
-% capacitor of divider
-Cp = csv_get_col(xls,'C',data_row) + randn(1,mcc).*csv_get_col(xls,'UC',data_row);
-D  = csv_get_col(xls,'D',data_row) + randn(1,mcc).*csv_get_col(xls,'UD',data_row);
-Zc = 1./(w.*Cp.*(j + D));
-
-% resistor of divider
-Rs  = csv_get_col(xls,'R',data_row) + randn(1,mcc).*csv_get_col(xls,'UR',data_row);
-tau = csv_get_col(xls,'tau',data_row) + randn(1,mcc).*csv_get_col(xls,'Utau',data_row);
-Zr = Rs + j*w.*tau.*Rs;
-
-% connection cable and load estimate
-Rs = 50e-3 + 50e-3*randn(1,mcc);
-Ls = 50e-9 + 50e-9*randn(1,mcc);
-Cp = 10e-12 + 20e-12*randn(1,mcc);
-Zcs = Rs + j*w*Ls;
-Zcp = 1./(j*w.*Cp);
-
-% effective shunt
-Zr = 1./(1./Zr + 1./Zcp);
-
-% effective series impedance
-Zc = Zc + Zcs;
-
-% tfer
-k = Zr./(Zr + Zc);
-
-ratio = mean(abs(k),2)
-u_ratio = std(abs(k),[],2)
-
-phase = mean(angle(k),2)
-u_phase = std(angle(k),[],2)
-
-kre = mean(real(k),2)
-u_kre = std(real(k),[],2)
-
-kim = mean(imag(k),2)
-u_kim = std(imag(k),[],2)
-
-% store results
-xls = csv_store_col(xls, 'ratio', ratio, data_row);
-xls = csv_store_col(xls, 'Uratio', u_ratio, data_row);
-xls = csv_store_col(xls, 'phi', 180/pi*phase, data_row);
-xls = csv_store_col(xls, 'Uphi', 180/pi*u_phase, data_row);
-xls = csv_store_col(xls, 're', kre, data_row);
-xls = csv_store_col(xls, 'Ure', u_kre, data_row);
-xls = csv_store_col(xls, 'im', kim, data_row);
-xls = csv_store_col(xls, 'Uim', u_kim, data_row);
-
-xlswrite(data_path, cat(1,xls.txt,num2cell(xls.num)), [data_sheet '_res']);
-
-
 
 

@@ -38,9 +38,9 @@ try % usin try-catch to prevent unclosed XLS COM ref
     % note: XLS must contain tables with all frequencies and ranges and nominal Z values. This code will only fill in the sheet.
     
     % get refz sheet dataz
-    frz = xls_get_col(xls,sheet_refz,'f');
-    Zrn = xls_get_col(xls,sheet_refz,'Nom Z');
-    Zrsi = xls_get_col(xls,sheet_refz,'Rs-Xs mult');
+    frz = xls_get_col(xls,sheet_refz,'f',4);
+    Zrn = xls_get_col(xls,sheet_refz,'Nom Z',4);
+    Zrsi = xls_get_col(xls,sheet_refz,'Rs-Xs mult',4);
     
     % generate some reference impedance values 
     refz_rand = 0.0001;
@@ -61,10 +61,10 @@ try % usin try-catch to prevent unclosed XLS COM ref
     u_Xsr = Zrn.*(max((frz/max(frz)).^refz_unc_Xs_pow*refz_unc_Xs_max,refz_unc_Xs_min));
     
     % store Ref Z data
-    xls = xls_set_col(xls,sheet_refz,'Rs',Rsr./Zrsi);
-    xls = xls_set_col(xls,sheet_refz,'Xs',Xsr./Zrsi);
-    xls = xls_set_col(xls,sheet_refz,'U(Rs)',u_Rsr./Zrsi);
-    xls = xls_set_col(xls,sheet_refz,'U(Xs)',u_Xsr./Zrsi);
+    xls = xls_set_col(xls,sheet_refz,'Rs',Rsr./Zrsi,4);
+    xls = xls_set_col(xls,sheet_refz,'Xs',Xsr./Zrsi,4);
+    xls = xls_set_col(xls,sheet_refz,'U(Rs)',u_Rsr./Zrsi,4);
+    xls = xls_set_col(xls,sheet_refz,'U(Xs)',u_Xsr./Zrsi,4);
 
 
 
@@ -79,7 +79,9 @@ try % usin try-catch to prevent unclosed XLS COM ref
     %   min max gain error array (deviation from 1.000000)
     model.gain   = [-0.000100 +0.000100];
     %   enable different gain for real-imag axes? 
-    model.elipse = 1;
+    model.elipse = 0;
+    %   elipticity of complex plane 
+    model.reim_sym = [-0.000010 +0.000010];
     %   min max phase error [rad]
     model.phase  = [-0.000100 +0.000100];
     %   randomize? if 0, will generate constant errors 
@@ -160,12 +162,15 @@ try % usin try-catch to prevent unclosed XLS COM ref
     rngx = rng_list(round(linrand(1,numel(rng_list),[M 1])));
     
     % generate test impedances
+    %  over-ranging (0.05: up to +-5% outside optimal range) 
+    measz_over = 0.05;
     %  module |Z| somewhere inside of range
     Zx = [];
     rngs_temp = [0;rng_list];
     for k = 1:M
         rid = find(rngx(k) == rngs_temp);
-        Zx(k,1) = linrand(max(1e-6,rngs_temp(rid-1)), rngs_temp(rid));
+        delta = rngs_temp(rid) - rngs_temp(rid-1);        
+        Zx(k,1) = linrand(max(1e-6,rngs_temp(rid-1) - delta*measz_over), rngs_temp(rid) + delta*measz_over);
     endfor
     %  random phase angle
     phix = linrand(-pi, +pi, size(Zx));

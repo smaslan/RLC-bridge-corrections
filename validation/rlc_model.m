@@ -25,16 +25,17 @@ function [Rs_out, Xs_out] = rlc_model(model, f, range, Rs, Xs, Zmod, inverse)
         %rng = model.rng(1);
         
         % interpolate RLC errors model to get error at this spot
-        err_gain(r,1) = interp2(rng.Z, rng.f, rng.gain, Zmod(r), f(r), 'linear');
+        err_re_gain(r,1) = interp2(rng.Z, rng.f, rng.re_gain, Zmod(r), f(r), 'linear');
+        err_im_gain(r,1) = interp2(rng.Z, rng.f, rng.im_gain, Zmod(r), f(r), 'linear');
         err_phi(r,1)  = interp2(rng.Z, rng.f, rng.phi,  Zmod(r), f(r), 'linear');
                 
     endfor
     
     % apply gain-phase
     if inverse
-        Z_out = Z./err_gain.*exp(-j*err_phi);
-    else
-        Z_out = Z.*err_gain.*exp(+j*err_phi);
+        Z_out = complex(real(Z)./err_re_gain, imag(Z)./err_im_gain).*exp(-j*err_phi);
+    else                
+        Z_out = complex(real(Z).*err_re_gain, imag(Z).*err_im_gain).*exp(+j*err_phi);
     endif
     
     % return components

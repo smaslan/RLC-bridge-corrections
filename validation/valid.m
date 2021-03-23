@@ -19,7 +19,7 @@ mfld = fileparts(mfilename('fullpath'));
 cd(mfld);
 
 % correction XLS to validate
-xls_path = fullfile(mfld,'./spreadsheets/RLC_fix.xlsx');
+xls_path = fullfile(mfld,'../spreadsheets/RLC_fix.xlsx');
 % sheet name with reference impedances
 sheet_refz = 'Ref Z';
 % sheet name with list of used reference impedances
@@ -69,37 +69,59 @@ try % usin try-catch to prevent unclosed XLS COM ref
 
 
     % -- generate calibration data:
-    % note: XLS must contain tables with all frequencies and ranges and nominal Z values. This code will only fill in the sheet.                          
+    % note: XLS must contain tables with all frequencies and ranges and nominal Z values. This code will only fill in the sheet.
+    
+    
+    % Definining bridge errors model:
+    model = struct();
+    %   mode of error (gain-phase)
+    model.lin_mode = '2p'; 
+    %   min max gain error array (deviation from 1.000000)
+    model.gain   = [-0.000100 +0.000100];
+    %   enable different gain for real-imag axes? 
+    model.elipse = 1;
+    %   min max phase error [rad]
+    model.phase  = [-0.000100 +0.000100];
+    %   randomize? if 0, will generate constant errors 
+    model.random = 1; 
+                              
    
     % get calibration sheet dataz
     rngc = xls_get_col(xls,sheet_cal,'Range Z',4);
     fcz  = xls_get_col(xls,sheet_cal,'f',4);
     Zcn  = xls_get_col(xls,sheet_cal,'Nom Z',4);     
     Zcsi = xls_get_col(xls,sheet_cal,'Rs-Xs mult',4);
+    
+    % get all existing calibration standads nominals
+    std_list = unique(Zcn);
+    
+    % get all existing ranges
+    rng_list = unique(rngc);
+    
+    % get all existing calibration frequencies
+    freq_list = unique(fcz);
+    
+    % initialize RLC bridge errors model
+    model = rlc_model_init(model, freq_list, rng_list);
    
     % search refz coresponding to cal. data
     czid = [];
     for k = 1:numel(fcz)
         czid(k,1) = find(fcz(k) == frz & Zcn(k) == Zrn,1);
     endfor
-    
+       
     % generate some fake measurements    
-    calz_rand_abs = 0.000005;
-    calz_rand_rel = 0.000050;
     calz_unc_Rs_abs = 0.000005;
     calz_unc_Rs_min = 0.000005;
     calz_unc_Rs_max = 0.000010;
     calz_unc_Xs_abs = 0.000005;
     calz_unc_Xs_min = 0.000005;
     calz_unc_Xs_max = 0.000010;
-    Rsc    = Rsr(czid).*(1 + calz_rand_rel*randn(size(fcz))) + calz_rand_abs*randn(size(fcz));
-    ua_Rsc = Rsc.*logrand(calz_unc_Rs_min,calz_unc_Rs_max,size(fcz)) + linrand(0,calz_unc_Rs_abs,size(fcz));
-    Xsc    = Xsr(czid).*(1 + calz_rand_rel*randn(size(fcz))) + calz_rand_abs*randn(size(fcz));
+    % apply RLC bridge model
+    [Rsc, Xsc] = rlc_model(model, fcz, rngc, Rsr(czid), Xsr(czid), [], 0);
+    % generate some uncertainties
+    ua_Rsc = Rsc.*logrand(calz_unc_Rs_min,calz_unc_Rs_max,size(fcz)) + linrand(0,calz_unc_Rs_abs,size(fcz));    
     ua_Xsc = Xsc.*logrand(calz_unc_Xs_min,calz_unc_Xs_max,size(fcz)) + linrand(0,calz_unc_Xs_abs,size(fcz));
-    
-    % calculate calibration factors
-    cal_Rs = Rsr(czid) - Rsc;
-    cal_Xs = Xsr(czid) - Xsc;
     
     % store calibration data
     xls = xls_set_col(xls,sheet_cal,'Rs',Rsc./Zcsi,4);
@@ -112,12 +134,6 @@ try % usin try-catch to prevent unclosed XLS COM ref
     % -- generate measurement data:
     % note: XLS must contain some rows to fill in. It will simulate as much measurements as valid rows find
     
-    % unique calibrated ranges
-    rngs = unique(rngc);
-    % unique calibrated frequencies
-    frqs = unique(fcz);
-    
-    
     % get count of measurements in the sheet (values ignored) 
     fm = xls_get_col(xls, sheet_meas, 'f',4);
     M = numel(fm);
@@ -126,15 +142,15 @@ try % usin try-catch to prevent unclosed XLS COM ref
     Zmsi = xls_get_col(xls, sheet_meas, 'Rs-Xs mult',4);
     
     % generate measurement frequencies
-    fx   = frqs(round(linrand(1,numel(frqs),[M 1])));
+    fx   = freq_list(round(linrand(1,numel(freq_list),[M 1])));
     
     % generate ranges
-    rngx = rngs(round(linrand(1,numel(rngs),[M 1])));
+    rngx = rng_list(round(linrand(1,numel(rng_list),[M 1])));
     
     % generate test impedances
     %  module |Z| somewhere inside of range
     Zx = [];
-    rngs_temp = [0;rngs];
+    rngs_temp = [0;rng_list];
     for k = 1:M
         rid = find(rngx(k) == rngs_temp);
         Zx(k,1) = linrand(max(1e-6,rngs_temp(rid-1)), rngs_temp(rid));
@@ -144,50 +160,61 @@ try % usin try-catch to prevent unclosed XLS COM ref
     %  convert to Rs-Xs
     Rsx = rounddig(Zx.*cos(phix),3);
     Xsx = rounddig(Zx.*sin(phix),3);
+       
     
     % store simulated impedance as a reference
     xls = xls_set_col(xls,sheet_meas,'Valid Rs',Rsx./Zmsi,4);
     xls = xls_set_col(xls,sheet_meas,'Valid Xs',Xsx./Zmsi,4);
     
-    
-    % distort measurement using inverse calibration data
-    Rsm = [];
-    Xsm = [];
-    for k = 1:M
-        % get all matching calibration spots
-        cid = find(fx(k) == fcz & rngx(k) == rngc);
-        
-        if isempty(cid)
-            % invalid (this should never happen - wrong range selected or missing calibration data for it)
-            
-        elseif numel(cid) == 1
-            % single spot only (this applies outside boundaries of range)
-            
-            % apply inverce calibration factor to simulated measurement
-            Rsm(k,1) = Rsx(k) - cal_Rs(cid);
-            Xsm(k,1) = Xsx(k) - cal_Xs(cid);
-            
-        else
-            % interpolated mode:
-            
-            % here we have to iteratively adjust |Zx|, because XLS calculates interpolates from measured Z, whereas here we calculate from simulated Z, which is slightly different
-            Zx_temp = Zx(k);            
-            for r = 1:3    
-                % get calibration factor
-                c_Rs = interp1(Zcn(cid), cal_Rs(cid), Zx_temp, 'linear', 'extrap');
-                c_Xs = interp1(Zcn(cid), cal_Xs(cid), Zx_temp, 'linear', 'extrap');
-                
-                % apply inverce calibration factor to simulated measurement
-                Rsm(k,1) = Rsx(k) - c_Rs;
-                Xsm(k,1) = Xsx(k) - c_Xs;
-                
-                % calculate corrected Zx and recalculate correction
-                Zx_temp = (Rsm(k).^2 + Xsm(k).^2).^0.5;                        
-            endfor
-            
-        endif
-                
+    % apply RLC bridge error to the data (iterative fix because XLS uses measured |Z| for interpolation, and we have actual |Z| only)
+    Rsm = Rsx; Xsm = Xsx;
+    for it = 1:3
+        Ztmp = (Rsm.^2 + Xsm.^2).^0.5;
+        [Rsm, Xsm] = rlc_model(model, fx, rngx, Rsx, Xsx, Ztmp, 0);        
     endfor
+        
+    % distort measurement using inverse calibration data
+%     Rsm = [];
+%     Xsm = [];
+%     for k = 1:M
+%         % get all matching calibration spots
+%         
+%         
+%        
+%         
+%         cid = find(fx(k) == fcz & rngx(k) == rngc);
+%         
+%         if isempty(cid)
+%             % invalid (this should never happen - wrong range selected or missing calibration data for it)
+%             
+%         elseif numel(cid) == 1
+%             % single spot only (this applies outside boundaries of range)
+%             
+%             % apply inverce calibration factor to simulated measurement
+%             Rsm(k,1) = Rsx(k) - cal_Rs(cid);
+%             Xsm(k,1) = Xsx(k) - cal_Xs(cid);
+%             
+%         else
+%             % interpolated mode:
+%             
+%             % here we have to iteratively adjust |Zx|, because XLS calculates interpolates from measured Z, whereas here we calculate from simulated Z, which is slightly different
+%             Zx_temp = Zx(k);            
+%             for r = 1:3    
+%                 % get calibration factor
+%                 c_Rs = interp1(Zcn(cid), cal_Rs(cid), Zx_temp, 'linear', 'extrap');
+%                 c_Xs = interp1(Zcn(cid), cal_Xs(cid), Zx_temp, 'linear', 'extrap');
+%                 
+%                 % apply inverce calibration factor to simulated measurement
+%                 Rsm(k,1) = Rsx(k) - c_Rs;
+%                 Xsm(k,1) = Xsx(k) - c_Xs;
+%                 
+%                 % calculate corrected Zx and recalculate correction
+%                 Zx_temp = (Rsm(k).^2 + Xsm(k).^2).^0.5;                        
+%             endfor
+%             
+%         endif
+%                 
+%     endfor
     
     % store distorted measurement data
     xls = xls_set_col(xls,sheet_meas,'f',fx,4);
@@ -200,10 +227,11 @@ catch err
     try
         xlsclose(xls);
     end               
-    error(err.identifier, err.message);
+    error(err);
 end_try_catch
 
 % always close so there are no zombies of Excel instances!
 xlsclose(xls);
+
 
 

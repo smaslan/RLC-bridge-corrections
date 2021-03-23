@@ -111,23 +111,35 @@ try % usin try-catch to prevent unclosed XLS COM ref
     endfor
        
     % generate some fake measurements    
-    calz_unc_Rs_abs = 0.000005;
-    calz_unc_Rs_min = 0.000005;
-    calz_unc_Rs_max = 0.000010;
-    calz_unc_Xs_abs = 0.000005;
-    calz_unc_Xs_min = 0.000005;
-    calz_unc_Xs_max = 0.000010;
+    calz_unc_abs = 0.000002;
+    calz_unc_min = 0.000005;
+    calz_unc_max = 0.000010;
     % apply RLC bridge model
     [Rsc, Xsc] = rlc_model(model, fcz, rngc, Rsr(czid), Xsr(czid), [], 0);
     % generate some uncertainties
-    ua_Rsc = Rsc.*logrand(calz_unc_Rs_min,calz_unc_Rs_max,size(fcz)) + linrand(0,calz_unc_Rs_abs,size(fcz));    
-    ua_Xsc = Xsc.*logrand(calz_unc_Xs_min,calz_unc_Xs_max,size(fcz)) + linrand(0,calz_unc_Xs_abs,size(fcz));
+    ua_Rsc = Rsc.*logrand(calz_unc_min,calz_unc_max,size(fcz)) + linrand(0,calz_unc_abs,size(fcz));    
+    ua_Xsc = Xsc.*logrand(calz_unc_min,calz_unc_max,size(fcz)) + linrand(0,calz_unc_abs,size(fcz));
     
+    % generate short resodual for cal sheet
+    calz_sh_rnd = 0.000002;
+    Rsc_sh = linrand(-calz_sh_rnd, calz_sh_rnd, size(fcz));
+    Xsc_sh = linrand(-calz_sh_rnd, calz_sh_rnd, size(fcz));
+    ua_Rsc_sh = Rsc_sh.*logrand(calz_unc_min,calz_unc_max,size(fcz)) + linrand(0,calz_unc_abs,size(fcz));    
+    ua_Xsc_sh = Xsc_sh.*logrand(calz_unc_min,calz_unc_max,size(fcz)) + linrand(0,calz_unc_abs,size(fcz));
+    Rsc_sh(Zcn == 0) = NaN;
+    Xsc_sh(Zcn == 0) = NaN;
+    ua_Rsc_sh(Zcn == 0) = NaN;
+    ua_Xsc_sh(Zcn == 0) = NaN;
+        
     % store calibration data
-    xls = xls_set_col(xls,sheet_cal,'Rs',Rsc./Zcsi,4);
-    xls = xls_set_col(xls,sheet_cal,'Xs',Xsc./Zcsi,4);
+    xls = xls_set_col(xls,sheet_cal,'Rs',(Rsc + Rsc_sh)./Zcsi,4);
+    xls = xls_set_col(xls,sheet_cal,'Xs',(Xsc + Xsc_sh)./Zcsi,4);
     xls = xls_set_col(xls,sheet_cal,'ua(Rs)',ua_Rsc./Zcsi,4);
     xls = xls_set_col(xls,sheet_cal,'ua(Xs)',ua_Xsc./Zcsi,4);
+    xls = xls_set_col(xls,sheet_cal,'sh Rs',Rsc_sh./Zcsi,4);
+    xls = xls_set_col(xls,sheet_cal,'sh Xs',Xsc_sh./Zcsi,4);
+    xls = xls_set_col(xls,sheet_cal,'sh ua(Rs)',ua_Rsc_sh./Zcsi,4);
+    xls = xls_set_col(xls,sheet_cal,'sh ua(Xs)',ua_Xsc_sh./Zcsi,4);
     
     
     
@@ -160,6 +172,18 @@ try % usin try-catch to prevent unclosed XLS COM ref
     %  convert to Rs-Xs
     Rsx = rounddig(Zx.*cos(phix),3);
     Xsx = rounddig(Zx.*sin(phix),3);
+    
+    % generate short residual for measurement sheet
+    measz_sh_rnd  = 0.000002;
+    measz_unc_abs = 0.000002;
+    measz_unc_min = 0.000005;
+    measz_unc_max = 0.000010;
+    Rsx_sh = linrand(-measz_sh_rnd, measz_sh_rnd, size(fx));
+    Xsx_sh = linrand(-measz_sh_rnd, measz_sh_rnd, size(fx));
+    ua_Rsx_sh = Rsx_sh.*logrand(measz_unc_min,measz_unc_max,size(fx)) + linrand(0,measz_unc_abs,size(fx));    
+    ua_Xsx_sh = Xsx_sh.*logrand(measz_unc_min,measz_unc_max,size(fx)) + linrand(0,measz_unc_abs,size(fx));    
+    ua_Rsx = Rsx.*logrand(measz_unc_min,measz_unc_max,size(fx)) + linrand(0,measz_unc_abs,size(fx));    
+    ua_Xsx = Xsx.*logrand(measz_unc_min,measz_unc_max,size(fx)) + linrand(0,measz_unc_abs,size(fx));
        
     
     % store simulated impedance as a reference
@@ -168,59 +192,22 @@ try % usin try-catch to prevent unclosed XLS COM ref
     
     % apply RLC bridge error to the data (iterative fix because XLS uses measured |Z| for interpolation, and we have actual |Z| only)
     Rsm = Rsx; Xsm = Xsx;
-    for it = 1:3
+    for it = 1:5
         Ztmp = (Rsm.^2 + Xsm.^2).^0.5;
         [Rsm, Xsm] = rlc_model(model, fx, rngx, Rsx, Xsx, Ztmp, 0);        
     endfor
-        
-    % distort measurement using inverse calibration data
-%     Rsm = [];
-%     Xsm = [];
-%     for k = 1:M
-%         % get all matching calibration spots
-%         
-%         
-%        
-%         
-%         cid = find(fx(k) == fcz & rngx(k) == rngc);
-%         
-%         if isempty(cid)
-%             % invalid (this should never happen - wrong range selected or missing calibration data for it)
-%             
-%         elseif numel(cid) == 1
-%             % single spot only (this applies outside boundaries of range)
-%             
-%             % apply inverce calibration factor to simulated measurement
-%             Rsm(k,1) = Rsx(k) - cal_Rs(cid);
-%             Xsm(k,1) = Xsx(k) - cal_Xs(cid);
-%             
-%         else
-%             % interpolated mode:
-%             
-%             % here we have to iteratively adjust |Zx|, because XLS calculates interpolates from measured Z, whereas here we calculate from simulated Z, which is slightly different
-%             Zx_temp = Zx(k);            
-%             for r = 1:3    
-%                 % get calibration factor
-%                 c_Rs = interp1(Zcn(cid), cal_Rs(cid), Zx_temp, 'linear', 'extrap');
-%                 c_Xs = interp1(Zcn(cid), cal_Xs(cid), Zx_temp, 'linear', 'extrap');
-%                 
-%                 % apply inverce calibration factor to simulated measurement
-%                 Rsm(k,1) = Rsx(k) - c_Rs;
-%                 Xsm(k,1) = Xsx(k) - c_Xs;
-%                 
-%                 % calculate corrected Zx and recalculate correction
-%                 Zx_temp = (Rsm(k).^2 + Xsm(k).^2).^0.5;                        
-%             endfor
-%             
-%         endif
-%                 
-%     endfor
-    
+         
     % store distorted measurement data
     xls = xls_set_col(xls,sheet_meas,'f',fx,4);
     xls = xls_set_col(xls,sheet_meas,'Range',rngx*1000,4);
-    xls = xls_set_col(xls,sheet_meas,'Rs',Rsm./Zmsi,4);
-    xls = xls_set_col(xls,sheet_meas,'Xs',Xsm./Zmsi,4);  
+    xls = xls_set_col(xls,sheet_meas,'Rs',(Rsm + Rsx_sh)./Zmsi,4);
+    xls = xls_set_col(xls,sheet_meas,'Xs',(Xsm + Xsx_sh)./Zmsi,4);  
+    xls = xls_set_col(xls,sheet_meas,'ua(Rs)',(ua_Rsx)./Zmsi,4);
+    xls = xls_set_col(xls,sheet_meas,'ua(Xs)',(ua_Xsx)./Zmsi,4);
+    xls = xls_set_col(xls,sheet_meas,'sh Rs',(Rsx_sh)./Zmsi,4);
+    xls = xls_set_col(xls,sheet_meas,'sh Xs',(Xsx_sh)./Zmsi,4);
+    xls = xls_set_col(xls,sheet_meas,'sh ua(Rs)',(ua_Rsx_sh)./Zmsi,4);
+    xls = xls_set_col(xls,sheet_meas,'sh ua(Xs)',(ua_Xsx_sh)./Zmsi,4);
     
     
 catch err

@@ -1,7 +1,16 @@
-function [data,col] = xls_get_col(xls,sheet,name,header_row=3,data_row_offset=2)
+function [data, col] = xls_get_col(xls,sheet,name,header_row,data_row_offset=2)
 
-    % get sheet data
+    % get sheet data           
     xdata = xls2oct(xls,sheet);
+    
+    if ischar(header_row)
+        % try to search table header row  
+        hid = find(strcmpi(xdata(:),header_row));
+        if isempty(hid)
+            error(sprintf('Octave header tag ''%s'' not found in the XLS sheet ''%s''!',header_row,sheet));
+        endif
+        header_row = mod(hid,size(xdata,1));  
+    endif 
     
     % try to find column by name
     col = find(strcmpi(xdata(header_row,:),name),1);    

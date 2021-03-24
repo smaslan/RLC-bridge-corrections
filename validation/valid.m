@@ -23,12 +23,16 @@ xls_path = fullfile(mfld,'../spreadsheets/RLC_fix.xlsx');
 % sheet name with reference impedances
 sheet_refz = 'Ref Z';
 % sheet name with list of used reference impedances
-sheet_refz_list = 'Ref Z list';
+%sheet_refz_list = 'Ref Z list';
 % sheet name with calibration data
 sheet_cal = 'Cal Data';
 % sheet name to which it will simulate measurements
 sheet_meas = 'Measurement';
 
+% header tag to identify start of data tables in the sheets
+header_row = '#octave_header#';
+
+         
 % open source XLS (using COM interface otherwise with OCT it will screw up rest of the sheets!)
 xls = xlsopen(xls_path,true,'COM',false);
 
@@ -38,9 +42,9 @@ try % usin try-catch to prevent unclosed XLS COM ref
     % note: XLS must contain tables with all frequencies and ranges and nominal Z values. This code will only fill in the sheet.
     
     % get refz sheet dataz
-    frz = xls_get_col(xls,sheet_refz,'f',4);
-    Zrn = xls_get_col(xls,sheet_refz,'Nom Z',4);
-    Zrsi = xls_get_col(xls,sheet_refz,'Rs-Xs mult',4);
+    frz = xls_get_col(xls,sheet_refz, 'f', header_row);
+    Zrn = xls_get_col(xls,sheet_refz, 'Nom Z', header_row);
+    Zrsi = xls_get_col(xls,sheet_refz, 'Rs-Xs mult', header_row);
     
     % generate some reference impedance values 
     refz_rand = 0.0001;
@@ -61,10 +65,10 @@ try % usin try-catch to prevent unclosed XLS COM ref
     u_Xsr = Zrn.*(max((frz/max(frz)).^refz_unc_Xs_pow*refz_unc_Xs_max,refz_unc_Xs_min));
     
     % store Ref Z data
-    xls = xls_set_col(xls,sheet_refz,'Rs',Rsr./Zrsi,4);
-    xls = xls_set_col(xls,sheet_refz,'Xs',Xsr./Zrsi,4);
-    xls = xls_set_col(xls,sheet_refz,'U(Rs)',u_Rsr./Zrsi,4);
-    xls = xls_set_col(xls,sheet_refz,'U(Xs)',u_Xsr./Zrsi,4);
+    xls = xls_set_col(xls,sheet_refz, 'Rs', Rsr./Zrsi, header_row);
+    xls = xls_set_col(xls,sheet_refz, 'Xs', Xsr./Zrsi, header_row);
+    xls = xls_set_col(xls,sheet_refz, 'U(Rs)', u_Rsr./Zrsi, header_row);
+    xls = xls_set_col(xls,sheet_refz, 'U(Xs)', u_Xsr./Zrsi, header_row);
 
 
 
@@ -89,10 +93,10 @@ try % usin try-catch to prevent unclosed XLS COM ref
                               
    
     % get calibration sheet dataz
-    rngc = xls_get_col(xls,sheet_cal,'Range Z',4);
-    fcz  = xls_get_col(xls,sheet_cal,'f',4);
-    Zcn  = xls_get_col(xls,sheet_cal,'Nom Z',4);     
-    Zcsi = xls_get_col(xls,sheet_cal,'Rs-Xs mult',4);
+    rngc = xls_get_col(xls,sheet_cal, 'Range Z', header_row);
+    fcz  = xls_get_col(xls,sheet_cal, 'f', header_row);
+    Zcn  = xls_get_col(xls,sheet_cal, 'Nom Z', header_row);     
+    Zcsi = xls_get_col(xls,sheet_cal, 'Rs-Xs mult', header_row);
     
     % get all existing calibration standads nominals
     std_list = unique(Zcn);
@@ -134,14 +138,14 @@ try % usin try-catch to prevent unclosed XLS COM ref
     ua_Xsc_sh(Zcn == 0) = NaN;
         
     % store calibration data
-    xls = xls_set_col(xls,sheet_cal,'Rs',(Rsc + Rsc_sh)./Zcsi,4);
-    xls = xls_set_col(xls,sheet_cal,'Xs',(Xsc + Xsc_sh)./Zcsi,4);
-    xls = xls_set_col(xls,sheet_cal,'ua(Rs)',ua_Rsc./Zcsi,4);
-    xls = xls_set_col(xls,sheet_cal,'ua(Xs)',ua_Xsc./Zcsi,4);
-    xls = xls_set_col(xls,sheet_cal,'sh Rs',Rsc_sh./Zcsi,4);
-    xls = xls_set_col(xls,sheet_cal,'sh Xs',Xsc_sh./Zcsi,4);
-    xls = xls_set_col(xls,sheet_cal,'sh ua(Rs)',ua_Rsc_sh./Zcsi,4);
-    xls = xls_set_col(xls,sheet_cal,'sh ua(Xs)',ua_Xsc_sh./Zcsi,4);
+    xls = xls_set_col(xls,sheet_cal, 'Rs', (Rsc + Rsc_sh)./Zcsi, header_row);
+    xls = xls_set_col(xls,sheet_cal, 'Xs', (Xsc + Xsc_sh)./Zcsi, header_row);
+    xls = xls_set_col(xls,sheet_cal, 'ua(Rs)', ua_Rsc./Zcsi, header_row);
+    xls = xls_set_col(xls,sheet_cal, 'ua(Xs)', ua_Xsc./Zcsi, header_row);
+    xls = xls_set_col(xls,sheet_cal, 'sh Rs', Rsc_sh./Zcsi, header_row);
+    xls = xls_set_col(xls,sheet_cal, 'sh Xs', Xsc_sh./Zcsi, header_row);
+    xls = xls_set_col(xls,sheet_cal, 'sh ua(Rs)', ua_Rsc_sh./Zcsi, header_row);
+    xls = xls_set_col(xls,sheet_cal, 'sh ua(Xs)', ua_Xsc_sh./Zcsi, header_row);
     
     
     
@@ -149,11 +153,11 @@ try % usin try-catch to prevent unclosed XLS COM ref
     % note: XLS must contain some rows to fill in. It will simulate as much measurements as valid rows find
     
     % get count of measurements in the sheet (values ignored) 
-    fm = xls_get_col(xls, sheet_meas, 'f',4);
+    fm = xls_get_col(xls, sheet_meas, 'f', header_row);
     M = numel(fm);
     
     % get measurement scaling factors 
-    Zmsi = xls_get_col(xls, sheet_meas, 'Rs-Xs mult',4);
+    Zmsi = xls_get_col(xls, sheet_meas, 'Rs-Xs mult', header_row);
     
     % generate measurement frequencies
     fx   = freq_list(round(linrand(1,numel(freq_list),[M 1])));
@@ -192,8 +196,8 @@ try % usin try-catch to prevent unclosed XLS COM ref
        
     
     % store simulated impedance as a reference
-    xls = xls_set_col(xls,sheet_meas,'Valid Rs',Rsx./Zmsi,4);
-    xls = xls_set_col(xls,sheet_meas,'Valid Xs',Xsx./Zmsi,4);
+    xls = xls_set_col(xls,sheet_meas, 'Valid Rs', Rsx./Zmsi, header_row);
+    xls = xls_set_col(xls,sheet_meas, 'Valid Xs', Xsx./Zmsi, header_row);
     
     % apply RLC bridge error to the data (iterative fix because XLS uses measured |Z| for interpolation, and we have actual |Z| only)
     Rsm = Rsx; Xsm = Xsx;
@@ -203,23 +207,23 @@ try % usin try-catch to prevent unclosed XLS COM ref
     endfor
          
     % store distorted measurement data
-    xls = xls_set_col(xls,sheet_meas,'f',fx,4);
-    xls = xls_set_col(xls,sheet_meas,'Range',rngx*1000,4);
-    xls = xls_set_col(xls,sheet_meas,'Rs',(Rsm + Rsx_sh)./Zmsi,4);
-    xls = xls_set_col(xls,sheet_meas,'Xs',(Xsm + Xsx_sh)./Zmsi,4);  
-    xls = xls_set_col(xls,sheet_meas,'ua(Rs)',(ua_Rsx)./Zmsi,4);
-    xls = xls_set_col(xls,sheet_meas,'ua(Xs)',(ua_Xsx)./Zmsi,4);
-    xls = xls_set_col(xls,sheet_meas,'sh Rs',(Rsx_sh)./Zmsi,4);
-    xls = xls_set_col(xls,sheet_meas,'sh Xs',(Xsx_sh)./Zmsi,4);
-    xls = xls_set_col(xls,sheet_meas,'sh ua(Rs)',(ua_Rsx_sh)./Zmsi,4);
-    xls = xls_set_col(xls,sheet_meas,'sh ua(Xs)',(ua_Xsx_sh)./Zmsi,4);
+    xls = xls_set_col(xls,sheet_meas, 'f', fx, header_row);
+    xls = xls_set_col(xls,sheet_meas, 'Range', rngx*1000, header_row);
+    xls = xls_set_col(xls,sheet_meas, 'Rs', (Rsm + Rsx_sh)./Zmsi, header_row);
+    xls = xls_set_col(xls,sheet_meas, 'Xs', (Xsm + Xsx_sh)./Zmsi, header_row);  
+    xls = xls_set_col(xls,sheet_meas, 'ua(Rs)', (ua_Rsx)./Zmsi, header_row);
+    xls = xls_set_col(xls,sheet_meas, 'ua(Xs)', (ua_Xsx)./Zmsi, header_row);
+    xls = xls_set_col(xls,sheet_meas, 'sh Rs', (Rsx_sh)./Zmsi, header_row);
+    xls = xls_set_col(xls,sheet_meas, 'sh Xs', (Xsx_sh)./Zmsi, header_row);
+    xls = xls_set_col(xls,sheet_meas, 'sh ua(Rs)', (ua_Rsx_sh)./Zmsi, header_row);
+    xls = xls_set_col(xls,sheet_meas, 'sh ua(Xs)', (ua_Xsx_sh)./Zmsi, header_row);
     
     
 catch err
     try
         xlsclose(xls);
     end               
-    error(err);
+    rethrow(err);
 end_try_catch
 
 % always close so there are no zombies of Excel instances!
